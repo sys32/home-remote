@@ -1,3 +1,7 @@
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+import {normalizeDevice,publicDevice} from './devices.mjs';
+const execute=promisify(execFile);
 import http from 'node:http';
 import https from 'node:https';
 import dgram from 'node:dgram';
@@ -10,10 +14,11 @@ import {TVSocket,localIP,magicPacket} from './protocol.mjs';
 
 const root=path.dirname(fileURLToPath(import.meta.url)), port=Number(process.env.TV_REMOTE_PORT||43821);
 const secret=crypto.randomBytes(24).toString('hex');
-const storeDir=path.join(os.homedir(),'Library','Application Support','DomaTV');
+const storeDir=process.env.TV_REMOTE_STORE_DIR||path.join(os.homedir(),'Library','Application Support','DomaTV');
 let saved={};try{saved=JSON.parse(await fs.readFile(path.join(storeDir,'devices.json'),'utf8'));}catch{}
-async function persist(){await fs.mkdir(storeDir,{recursive:true,mode:0o700});await fs.writeFile(path.join(storeDir,'devices.json'),JSON.stringify(saved),{mode:0o600});}
-let devices=new Map(Object.entries(saved).filter(([ip,d])=>localIP(ip)&&d.brand).map(([ip,d])=>[ip,{ip,name:d.name||`${d.brand} TV`,brand:d.brand,model:d.model||'',mac:d.mac||''}])), controller=null, scanPromise=null;
+let writes=Promise.resolve();
+async function persist(){const snapshot=JSON.stringify(saved);writes=writes.catch(()=>{}).then(async()=>{await fs.mkdir(storeDir,{recursive:true,mode:0o700});const tmp=path.join(storeDir,'devices.tmp');await fs.writeFile(tmp,snapshot,{mode:0o600});await fs.rename(tmp,path.join(storeDir,'devices.json'));});return writes;}
+let devices=new Map(Object.entries(saved).filter(([ip,d])=>localIP(ip)&&d.brand).map(([ip,d])=>[ip,publicDevice(ip,d)])), controller=null, scanPromise=null;
 let state={status:'idle',message:'Избери телевизор за поврзување.',device:null};
 const subscribers=new Set();
 function update(values){Object.assign(state,values);for(const res of subscribers)res.write(`data: ${JSON.stringify(state)}\n\n`);}
@@ -34,13 +39,15 @@ async function describe(location){
     const text=`${manufacturer} ${model} ${name} ${xmlValue(xml,'deviceType')}`;
     let brand=/samsung/i.test(text)?'Samsung':/LG Electronics|webos|lge/i.test(text)?'LG':/philips|tp vision/i.test(text)?'Philips':'Other';
     if(brand==='Other'&&!/television|mediarenderer|\btv\b/i.test(text))return;
-    const d={ip:u.hostname,name:name||model||brand,brand,model,mac:saved[u.hostname]?.mac||''};
+    const d={ip:u.hostname,name:saved[u.hostname]?.name||name||model||brand,brand,model,mac:saved[u.hostname]?.mac||'',saved:!!saved[u.hostname]?.brand,discovered:true};
     if(brand==='Samsung')try{const info=JSON.parse(await request(`http://${d.ip}:8001/api/v2/`));d.model=info.device?.modelName||d.model;const mac=info.device?.wifiMac;if(mac&&/^([a-f0-9]{2}:){5}[a-f0-9]{2}$/i.test(mac))d.mac=mac;}catch{}
+    if(!d.mac)try{const {stdout}=await execute('/usr/sbin/arp',['-n',d.ip],{timeout:1500});const match=stdout.match(/ at ([a-f0-9]{1,2}(?::[a-f0-9]{1,2}){5}) /i);if(match)d.mac=match[1].split(':').map(x=>x.padStart(2,'0')).join(':').toUpperCase();}catch{}
+    if(d.saved){saved[d.ip]={...saved[d.ip],model:d.model,mac:d.mac};await persist();}
     devices.set(d.ip,d);
   }catch{}
 }
 async function discover(){
-  devices=new Map();
+  devices=new Map(Object.entries(saved).filter(([ip,d])=>localIP(ip)&&d.brand).map(([ip,d])=>[ip,publicDevice(ip,d)]));
   const sockets=[],tasks=[],locations=new Set();
   const addresses=[...new Set(Object.values(os.networkInterfaces()).flat().filter(x=>x.family==='IPv4'&&!x.internal&&localIP(x.address)).map(x=>x.address))];
   if(!addresses.length)throw Error('Нема активна домашна мрежа. Поврзи го Mac на Wi-Fi или Ethernet.');
@@ -85,7 +92,7 @@ class Controller{
       const msg=JSON.parse(text),d=this.device;
       if(msg.type==='registered'||msg.event==='ms.channel.connect'){
         clearTimeout(this.timer);this.ready=true;
-        saved[d.ip]={...saved[d.ip],...d,...(msg.payload?.['client-key']?{clientKey:msg.payload['client-key']}:{}),...(msg.data?.token?{token:msg.data.token}:{})};
+        d.saved=true;devices.set(d.ip,d);saved[d.ip]={...saved[d.ip],...d,...(msg.payload?.['client-key']?{clientKey:msg.payload['client-key']}:{}),...(msg.data?.token?{token:msg.data.token}:{})};
         await persist();this.status('connected','Поврзан. Далечинското е подготвено.');return;
       }
       if(msg.event==='ms.channel.unauthorized'||msg.event==='ms.channel.timeOut'){
@@ -132,6 +139,14 @@ const server=http.createServer(async(req,res)=>{
       if(req.method!=='POST'){json(405,{error:'Недозволен метод.'});return;}
       const data=await body(req);
       if(url.pathname==='/api/scan'){if(!scanPromise)scanPromise=discover().finally(()=>{scanPromise=null;});json(200,{devices:await scanPromise});return;}
+      if(url.pathname==='/api/save'){
+        const device=normalizeDevice(data,{...devices.get(data.ip),...saved[data.ip]});
+        const previous=saved[device.ip];saved[device.ip]={...(previous?.brand===device.brand?previous:{}),...device};
+        try{await persist();}catch(e){if(previous)saved[device.ip]=previous;else delete saved[device.ip];throw e;}
+        devices.set(device.ip,{...devices.get(device.ip),...device});
+        if(controller?.device.ip===device.ip){if(controller.device.brand!==device.brand){controller.close();controller=null;update({status:'idle',device:null,message:'Марката е изменета. Поврзи го телевизорот повторно.'});}else{Object.assign(controller.device,device);update({device:controller.device});}}
+        json(200,{device,devices:[...devices.values()],message:'Телевизорот е зачуван.'});return;
+      }
       if(url.pathname==='/api/connect'){
         if(!localIP(data.ip))throw Error('Внеси локална IPv4-адреса, пример 192.168.1.50.');
         const device=devices.get(data.ip)||{ip:data.ip,brand:data.brand,name:`${data.brand} TV`,model:''};
@@ -143,7 +158,7 @@ const server=http.createServer(async(req,res)=>{
       if(url.pathname==='/api/disconnect'){controller?.close();controller=null;update({status:'idle',message:'Врската е затворена.',device:null});json(200,{ok:true});return;}
       if(url.pathname==='/api/command'){if(!controller)throw Error('Прво избери телевизор.');json(200,{message:await controller.command(data.command)});return;}
       if(url.pathname==='/api/hdmi'){if(!controller?.ready||controller.device.brand!=='LG')throw Error('Овие HDMI копчиња се за LG.');if(![1,2,3,4].includes(data.input))throw Error('Невалиден HDMI.');await controller.lg('system.launcher/launch',{id:`com.webos.app.hdmi${data.input}`});json(200,{message:'HDMI командата е прифатена.'});return;}
-      if(url.pathname==='/api/wake'){if(!localIP(data.ip))throw Error('Избери телевизор или внеси IP-адреса.');await wake(data.mac);saved[data.ip]={...saved[data.ip],mac:data.mac};await persist();json(200,{message:'Испратен е сигнал за будење. Почекај, па поврзи се. Палењето зависи од поставките на телевизорот.'});return;}
+      if(url.pathname==='/api/wake'){if(!localIP(data.ip))throw Error('Избери телевизор или внеси IP-адреса.');await wake(data.mac);saved[data.ip]={...saved[data.ip],mac:data.mac};await persist();const known=devices.get(data.ip);if(known){known.mac=data.mac.toUpperCase();if(controller?.device.ip===data.ip)update({device:known});}json(200,{message:'Испратен е сигнал за будење. Почекај, па поврзи се. Палењето зависи од поставките на телевизорот.'});return;}
       json(404,{error:'Непознато барање.'});return;
     }
     if(req.method!=='GET'){res.writeHead(405).end();return;}
