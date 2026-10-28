@@ -14,10 +14,10 @@ test('saved TVs survive restart; edits preserve pairing; API never exposes token
     await fs.writeFile(path.join(store,'devices.json'),JSON.stringify({[ip]:{brand:'LG',name:'Old',clientKey:'do-not-expose',mac:''}}));
     let headers=await start();
     const save=async data=>fetch(base+'/api/save',{method:'POST',headers,body:JSON.stringify(data)});
-    const saved=await save({ip,name:'Дневна',brand:'LG',mac:'ab-cd-ef-12-34-56',token:'injected'});assert.equal(saved.status,200);const result=await saved.json();assert.equal(result.device.mac,'AB:CD:EF:12:34:56');assert.equal(result.devices.length,1);assert.equal(JSON.stringify(result).includes('do-not-expose'),false);
+    const saved=await save({ip,name:'Дневна',room:'Прв кат',favorite:true,brand:'LG',mac:'ab-cd-ef-12-34-56',token:'injected'});assert.equal(saved.status,200);const result=await saved.json();assert.equal(result.device.mac,'AB:CD:EF:12:34:56');assert.equal(result.devices.length,1);assert.equal(JSON.stringify(result).includes('do-not-expose'),false);
     const invalid=await save({ip,name:'Дневна',brand:'LG',mac:'invalid'});assert.equal(invalid.status,400);
     await stop();headers=await start();
-    const devices=(await (await fetch(base+'/api/devices',{headers})).json()).devices;assert.equal(devices.length,1);assert.equal(devices[0].name,'Дневна');assert.equal(devices[0].saved,true);assert.equal(devices[0].mac,'AB:CD:EF:12:34:56');assert.equal(devices[0].clientKey,undefined);
+    const devices=(await (await fetch(base+'/api/devices',{headers})).json()).devices;assert.equal(devices.length,1);assert.equal(devices[0].name,'Дневна');assert.equal(devices[0].saved,true);assert.equal(devices[0].room,'Прв кат');assert.equal(devices[0].favorite,true);assert.equal(devices[0].mac,'AB:CD:EF:12:34:56');assert.equal(devices[0].clientKey,undefined);
     const disk=JSON.parse(await fs.readFile(path.join(store,'devices.json'),'utf8'));assert.equal(disk[ip].clientKey,'do-not-expose');assert.equal(disk[ip].token,undefined);
   }finally{await stop();await fs.rm(store,{recursive:true,force:true});}
 });

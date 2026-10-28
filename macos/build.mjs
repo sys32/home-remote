@@ -19,7 +19,7 @@ try{
   const iconset=path.join(temporary,'AppIcon.iconset');run(path.join(temporary,'make-icon'),[iconset]);
   run('/usr/bin/iconutil',['-c','icns',iconset,'-o',path.join(resources,'AppIcon.icns')]);
   await fs.copyFile(path.join(project,'macos/Info.plist'),path.join(output,'Contents/Info.plist'));
-  for(const name of ['server.mjs','devices.mjs','protocol.mjs','package.json'])await fs.copyFile(path.join(project,name),path.join(resources,'TVRemote',name));
+  for(const name of ['server.mjs','devices.mjs','protocol.mjs','sleep.mjs','package.json'])await fs.copyFile(path.join(project,name),path.join(resources,'TVRemote',name));
   for(const name of ['index.html','app.js','style.css'])await fs.copyFile(path.join(project,'public',name),path.join(resources,'TVRemote/public',name));
   // Keep the runtime's upstream license and all bundled third-party notices.
   const license=await fs.readFile(path.join(project,'macos/Node-LICENSE.txt'),'utf8');

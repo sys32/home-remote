@@ -7,8 +7,10 @@ export function normalizeDevice(input, previous={}) {
   if(!name||name.length>80)throw Error('Името треба да има од 1 до 80 знаци.');
   const raw=String(input.mac??previous.mac??'').trim();
   if(raw&&!/^([a-f0-9]{2}[:-]){5}[a-f0-9]{2}$/i.test(raw))throw Error('Внеси валидна MAC-адреса, пример AA:BB:CC:DD:EE:FF.');
-  return {ip:input.ip,name,brand:input.brand,model:String(input.model??previous.model??'').slice(0,120),mac:raw.replace(/-/g,':').toUpperCase(),saved:true};
+  const room=String(input.room??previous.room??'').trim();
+  if(room.length>40)throw Error('Името на собата може да има до 40 знаци.');
+  return {ip:input.ip,name,brand:input.brand,model:String(input.model??previous.model??'').slice(0,120),mac:raw.replace(/-/g,':').toUpperCase(),room,favorite:input.favorite===undefined?previous.favorite===true:input.favorite===true,saved:true};
 }
 export function publicDevice(ip, data) {
-  return {ip,name:data.name||`${data.brand} TV`,brand:data.brand,model:data.model||'',mac:data.mac||'',saved:true};
+  return {ip,name:data.name||`${data.brand} TV`,brand:data.brand,model:data.model||'',mac:data.mac||'',room:data.room||'',favorite:data.favorite===true,saved:true};
 }

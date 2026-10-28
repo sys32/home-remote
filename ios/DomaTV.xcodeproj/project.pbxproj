@@ -1,0 +1,31 @@
+// !$*UTF8*$!
+{
+ archiveVersion = 1; classes = {}; objectVersion = 56;
+ objects = {
+ A00000000000000000000001 = {isa = PBXBuildFile; fileRef = B00000000000000000000001;};
+ A00000000000000000000002 = {isa = PBXBuildFile; fileRef = B00000000000000000000002;};
+ A00000000000000000000003 = {isa = PBXBuildFile; fileRef = B00000000000000000000003;};
+ A00000000000000000000004 = {isa = PBXBuildFile; fileRef = B00000000000000000000005;};
+ B00000000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>";};
+ B00000000000000000000002 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteStore.swift; sourceTree = "<group>";};
+ B00000000000000000000003 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DomaTVApp.swift; sourceTree = "<group>";};
+ B00000000000000000000004 = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>";};
+ B00000000000000000000005 = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>";};
+ B00000000000000000000006 = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Multicast.entitlements; sourceTree = "<group>";};
+ B00000000000000000000007 = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DomaTV.app; sourceTree = BUILT_PRODUCTS_DIR;};
+ C00000000000000000000000 = {isa = PBXGroup; children = (C00000000000000000000001,C00000000000000000000002); sourceTree = "<group>";};
+ C00000000000000000000001 = {isa = PBXGroup; children = (B00000000000000000000001,B00000000000000000000002,B00000000000000000000003,B00000000000000000000004,B00000000000000000000005,B00000000000000000000006); path = DomaTV; sourceTree = "<group>";};
+ C00000000000000000000002 = {isa = PBXGroup; children = (B00000000000000000000007); name = Products; sourceTree = "<group>";};
+ D00000000000000000000001 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000001,A00000000000000000000002,A00000000000000000000003); runOnlyForDeploymentPostprocessing = 0;};
+ D00000000000000000000002 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0;};
+ D00000000000000000000003 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000004); runOnlyForDeploymentPostprocessing = 0;};
+ E00000000000000000000001 = {isa = PBXNativeTarget; buildConfigurationList = F00000000000000000000002; buildPhases = (D00000000000000000000001,D00000000000000000000002,D00000000000000000000003); buildRules = (); dependencies = (); name = DomaTV; productName = DomaTV; productReference = B00000000000000000000007; productType = "com.apple.product-type.application";};
+ E00000000000000000000002 = {isa = PBXProject; attributes = {BuildIndependentTargetsInParallel = YES; LastSwiftUpdateCheck = 2700; LastUpgradeCheck = 2700; TargetAttributes = {E00000000000000000000001 = {CreatedOnToolsVersion = 27.1;};};}; buildConfigurationList = F00000000000000000000001; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en,mk,Base); mainGroup = C00000000000000000000000; productRefGroup = C00000000000000000000002; projectDirPath = ""; projectRoot = ""; targets = (E00000000000000000000001);};
+ F00000000000000000000001 = {isa = XCConfigurationList; buildConfigurations = (F10000000000000000000001,F10000000000000000000002); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;};
+ F00000000000000000000002 = {isa = XCConfigurationList; buildConfigurations = (F20000000000000000000001,F20000000000000000000002); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;};
+ F10000000000000000000001 = {isa = XCBuildConfiguration; buildSettings = {SDKROOT = iphoneos; IPHONEOS_DEPLOYMENT_TARGET = 17.0; SWIFT_VERSION = 5.0; CLANG_ENABLE_MODULES = YES; DEBUG_INFORMATION_FORMAT = dwarf;}; name = Debug;};
+ F10000000000000000000002 = {isa = XCBuildConfiguration; buildSettings = {SDKROOT = iphoneos; IPHONEOS_DEPLOYMENT_TARGET = 17.0; SWIFT_VERSION = 5.0; CLANG_ENABLE_MODULES = YES; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";}; name = Release;};
+ F20000000000000000000001 = {isa = XCBuildConfiguration; buildSettings = {ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 3; DEVELOPMENT_TEAM = ""; ENABLE_PREVIEWS = YES; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = DomaTV/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 17.0; MARKETING_VERSION = 0.3.0; PRODUCT_BUNDLE_IDENTIFIER = mk.doma.tvremote.ios; PRODUCT_NAME = "$(TARGET_NAME)"; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SUPPORTS_MACCATALYST = NO; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2";}; name = Debug;};
+ F20000000000000000000002 = {isa = XCBuildConfiguration; buildSettings = {ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 3; DEVELOPMENT_TEAM = ""; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = DomaTV/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 17.0; MARKETING_VERSION = 0.3.0; PRODUCT_BUNDLE_IDENTIFIER = mk.doma.tvremote.ios; PRODUCT_NAME = "$(TARGET_NAME)"; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SUPPORTS_MACCATALYST = NO; SWIFT_COMPILATION_MODE = wholemodule; SWIFT_OPTIMIZATION_LEVEL = "-O"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2";}; name = Release;};
+ }; rootObject = E00000000000000000000002;
+}

@@ -2,7 +2,10 @@ import AppKit
 import WebKit
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKScriptMessageHandler, NSWindowDelegate {
+    private var statusItem: NSStatusItem!
+    private var popover: NSPopover!
+    private var miniWebView: WKWebView!
     private var window: NSWindow!
     private var webView: WKWebView!
     private var status: NSTextField!
@@ -31,10 +34,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         edit.submenu = edits
         menu.addItem(edit)
         NSApp.mainMenu = menu
+        configureMenuBar()
 
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1180, height: 850),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable],
                           backing: .buffered, defer: false)
+        window.delegate = self
         window.title = "Дома TV"
         window.minSize = NSSize(width: 800, height: 650)
         window.center()
@@ -59,6 +64,63 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         Task { await start() }
+    }
+
+    private func configureMenuBar() {
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        if let button = statusItem.button {
+            button.image = NSImage(systemSymbolName: "tv", accessibilityDescription: "Дома TV")
+            button.image?.isTemplate = true
+            button.toolTip = "Дома TV — брзо далечинско"
+            button.target = self
+            button.action = #selector(togglePopover)
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        }
+        popover = NSPopover()
+        popover.behavior = .transient
+        popover.contentSize = NSSize(width: 360, height: 680)
+        let configuration = WKWebViewConfiguration()
+        configuration.userContentController.add(self, name: "doma")
+        miniWebView = WKWebView(frame: NSRect(x: 0, y: 0, width: 360, height: 680), configuration: configuration)
+        miniWebView.navigationDelegate = self
+        let content = NSViewController()
+        content.view = miniWebView
+        popover.contentViewController = content
+    }
+
+    @objc private func togglePopover() {
+        if NSApp.currentEvent?.type == .rightMouseUp {
+            let menu = NSMenu()
+            let open = menu.addItem(withTitle: "Отвори Дома TV", action: #selector(openWindow), keyEquivalent: "")
+            open.target = self
+            menu.addItem(.separator())
+            let quit = menu.addItem(withTitle: "Затвори Дома TV целосно", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+            quit.target = NSApp
+            if let button = statusItem.button, let event = NSApp.currentEvent { NSMenu.popUpContextMenu(menu, with: event, for: button) }
+            return
+        }
+        if popover.isShown { popover.performClose(nil); return }
+        guard let button = statusItem.button else { return }
+        miniWebView.load(URLRequest(url: URL(string: "http://127.0.0.1:43821/?compact=1")!))
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+    }
+
+    @objc private func openWindow() {
+        popover.performClose(nil)
+        NSApp.setActivationPolicy(.regular)
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard message.frameInfo.securityOrigin.host == "127.0.0.1",
+              message.frameInfo.securityOrigin.port == 43821,
+              let data = message.body as? [String: String], data["action"] == "openWindow" else { return }
+        openWindow()
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        NSApp.setActivationPolicy(.accessory)
     }
 
     private func serviceResponds() async -> Bool {
@@ -130,7 +192,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
 
     @objc private func about() {
         NSApp.orderFrontStandardAboutPanel(options: [
-            .applicationName: "Дома TV", .applicationVersion: "0.2.0",
+            .applicationName: "Дома TV", .applicationVersion: "0.3.0",
             .credits: NSAttributedString(string: "Далечинско за твојот дом. Локално на твојот Mac.")
         ])
     }
@@ -144,9 +206,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         guard let url = navigationAction.request.url else { decisionHandler(.cancel); return }
         decisionHandler(url.scheme == "http" && url.host == "127.0.0.1" && url.port == 43821 ? .allow : .cancel)
     }
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        window.makeKeyAndOrderFront(nil)
+        openWindow()
         return true
     }
     func applicationWillTerminate(_ notification: Notification) {

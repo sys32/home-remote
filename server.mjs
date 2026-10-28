@@ -1,3 +1,4 @@
+import {SleepTimer} from './sleep.mjs';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {normalizeDevice,publicDevice} from './devices.mjs';
@@ -19,9 +20,10 @@ let saved={};try{saved=JSON.parse(await fs.readFile(path.join(storeDir,'devices.
 let writes=Promise.resolve();
 async function persist(){const snapshot=JSON.stringify(saved);writes=writes.catch(()=>{}).then(async()=>{await fs.mkdir(storeDir,{recursive:true,mode:0o700});const tmp=path.join(storeDir,'devices.tmp');await fs.writeFile(tmp,snapshot,{mode:0o600});await fs.rename(tmp,path.join(storeDir,'devices.json'));});return writes;}
 let devices=new Map(Object.entries(saved).filter(([ip,d])=>localIP(ip)&&d.brand).map(([ip,d])=>[ip,publicDevice(ip,d)])), controller=null, scanPromise=null;
-let state={status:'idle',message:'Избери телевизор за поврзување.',device:null};
+let state={status:'idle',message:'Избери телевизор за поврзување.',device:null,sleep:null};
 const subscribers=new Set();
 function update(values){Object.assign(state,values);for(const res of subscribers)res.write(`data: ${JSON.stringify(state)}\n\n`);}
+const sleepTimer=new SleepTimer(value=>update({sleep:value}),(error,device)=>update({message:error?'Тајмерот не успеа: '+error.message:'Испратена е команда за гасење на '+device.name+'.'}));
 function request(url,{method='GET',body,timeout=3000}={}){
   return new Promise((resolve,reject)=>{
     const u=new URL(url);if(!localIP(u.hostname))return reject(Error('Дозволени се само локални IP-адреси.'));
@@ -39,7 +41,7 @@ async function describe(location){
     const text=`${manufacturer} ${model} ${name} ${xmlValue(xml,'deviceType')}`;
     let brand=/samsung/i.test(text)?'Samsung':/LG Electronics|webos|lge/i.test(text)?'LG':/philips|tp vision/i.test(text)?'Philips':'Other';
     if(brand==='Other'&&!/television|mediarenderer|\btv\b/i.test(text))return;
-    const d={ip:u.hostname,name:saved[u.hostname]?.name||name||model||brand,brand,model,mac:saved[u.hostname]?.mac||'',saved:!!saved[u.hostname]?.brand,discovered:true};
+    const d={ip:u.hostname,name:saved[u.hostname]?.name||name||model||brand,brand,model,mac:saved[u.hostname]?.mac||'',room:saved[u.hostname]?.room||'',favorite:saved[u.hostname]?.favorite===true,saved:!!saved[u.hostname]?.brand,discovered:true};
     if(brand==='Samsung')try{const info=JSON.parse(await request(`http://${d.ip}:8001/api/v2/`));d.model=info.device?.modelName||d.model;const mac=info.device?.wifiMac;if(mac&&/^([a-f0-9]{2}:){5}[a-f0-9]{2}$/i.test(mac))d.mac=mac;}catch{}
     if(!d.mac)try{const {stdout}=await execute('/usr/sbin/arp',['-n',d.ip],{timeout:1500});const match=stdout.match(/ at ([a-f0-9]{1,2}(?::[a-f0-9]{1,2}){5}) /i);if(match)d.mac=match[1].split(':').map(x=>x.padStart(2,'0')).join(':').toUpperCase();}catch{}
     if(d.saved){saved[d.ip]={...saved[d.ip],model:d.model,mac:d.mac};await persist();}
@@ -152,12 +154,33 @@ const server=http.createServer(async(req,res)=>{
         const device=devices.get(data.ip)||{ip:data.ip,brand:data.brand,name:`${data.brand} TV`,model:''};
         if(!['LG','Samsung','Philips','Other'].includes(device.brand))throw Error('Избери марка.');
         if(controller&&!controller.closed&&['connecting','pairing'].includes(state.status))throw Error('Поврзувањето е во тек. Почекај или прекини го.');
-        controller?.close();controller=new Controller(device);devices.set(device.ip,device);update({status:'connecting',message:'Се поврзува…',device});
+        sleepTimer.cancel();controller?.close();controller=new Controller(device);devices.set(device.ip,device);update({status:'connecting',message:'Се поврзува…',device});
         const active=controller;active.connect().catch(e=>{if(controller===active&&!active.closed){active.status('error',e.message);active.close();}});json(200,{ok:true});return;
       }
-      if(url.pathname==='/api/disconnect'){controller?.close();controller=null;update({status:'idle',message:'Врската е затворена.',device:null});json(200,{ok:true});return;}
+      if(url.pathname==='/api/disconnect'){sleepTimer.cancel();controller?.close();controller=null;update({status:'idle',message:'Врската е затворена.',device:null});json(200,{ok:true});return;}
       if(url.pathname==='/api/command'){if(!controller)throw Error('Прво избери телевизор.');json(200,{message:await controller.command(data.command)});return;}
-      if(url.pathname==='/api/hdmi'){if(!controller?.ready||controller.device.brand!=='LG')throw Error('Овие HDMI копчиња се за LG.');if(![1,2,3,4].includes(data.input))throw Error('Невалиден HDMI.');await controller.lg('system.launcher/launch',{id:`com.webos.app.hdmi${data.input}`});json(200,{message:'HDMI командата е прифатена.'});return;}
+      if(url.pathname==='/api/sleep'){
+        if(data.minutes===0){sleepTimer.cancel();json(200,{message:'Тајмерот е откажан.'});return;}
+        if(!controller?.ready)throw Error('Прво поврзи го телевизорот.');
+        const target=controller;
+        const timer=sleepTimer.schedule(data.minutes,target.device,async()=>{if(controller!==target||!target.ready)throw Error('Врската со избраниот телевизор е прекината.');await target.command('powerOff');});
+        json(200,{timer,message:'Гасење за '+data.minutes+' минути. Mac мора да остане буден и апликацијата да работи.'});return;
+      }
+      if(url.pathname==='/api/launch'){
+        if(!controller?.ready||controller.device.brand!=='LG')throw Error('Брзото отворање апликации е достапно за поврзан LG.');
+        const ids={youtube:'youtube.leanback.v4',netflix:'netflix'};
+        if(!Object.hasOwn(ids,data.app))throw Error('Непозната апликација.');
+        await controller.lg('system.launcher/launch',{id:ids[data.app]});json(200,{message:'Телевизорот ја прифати командата за отворање.'});return;
+      }
+      if(url.pathname==='/api/channel'){
+        if(!controller?.ready)throw Error('Прво поврзи го телевизорот.');
+        if(!/^\d{1,4}([.-]\d{1,3})?$/.test(String(data.channel)))throw Error('Внеси број на канал, пример 5 или 5.1.');
+        if(controller.device.brand==='LG')await controller.lg('tv/openChannel',{channelNumber:String(data.channel)});
+        else{if(!/^\d{1,4}$/.test(String(data.channel)))throw Error('За оваа марка внеси цел број.');for(const digit of String(data.channel)){if(controller.device.brand==='Samsung')controller.ws.send({method:'ms.remote.control',params:{Cmd:'Click',DataOfCmd:'KEY_'+digit,Option:'false',TypeOfRemote:'SendRemoteKey'}});else await request('http://'+controller.device.ip+':1925/'+controller.version+'/input/key',{method:'POST',body:{key:'Digit'+digit}});await new Promise(r=>setTimeout(r,150));}}
+        json(200,{message:'Испратен е бројот на каналот.'});return;
+      }
+      if(url.pathname==='/api/hdmi'){
+if(!controller?.ready||controller.device.brand!=='LG')throw Error('Овие HDMI копчиња се за LG.');if(![1,2,3,4].includes(data.input))throw Error('Невалиден HDMI.');await controller.lg('system.launcher/launch',{id:`com.webos.app.hdmi${data.input}`});json(200,{message:'HDMI командата е прифатена.'});return;}
       if(url.pathname==='/api/wake'){if(!localIP(data.ip))throw Error('Избери телевизор или внеси IP-адреса.');await wake(data.mac);saved[data.ip]={...saved[data.ip],mac:data.mac};await persist();const known=devices.get(data.ip);if(known){known.mac=data.mac.toUpperCase();if(controller?.device.ip===data.ip)update({device:known});}json(200,{message:'Испратен е сигнал за будење. Почекај, па поврзи се. Палењето зависи од поставките на телевизорот.'});return;}
       json(404,{error:'Непознато барање.'});return;
     }
@@ -171,4 +194,4 @@ const server=http.createServer(async(req,res)=>{
 });
 server.on('error',e=>{console.error(e.code==='EADDRINUSE'?`Апликацијата веќе работи: http://127.0.0.1:${port}`:e.message);process.exitCode=1;});
 server.listen(port,'127.0.0.1',()=>console.log(`Doma TV: http://127.0.0.1:${port}`));
-for(const signal of ['SIGINT','SIGTERM'])process.on(signal,()=>{controller?.close();for(const res of subscribers)res.end();server.close(()=>process.exit());});
+for(const signal of ['SIGINT','SIGTERM'])process.on(signal,()=>{sleepTimer.cancel();controller?.close();for(const res of subscribers)res.end();server.close(()=>process.exit());});
